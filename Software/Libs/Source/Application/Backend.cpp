@@ -1608,6 +1608,15 @@ void Backend::guiHandler(const G2BEvent::MsdOpen &evt)
 
     App::Manager::GetInstance().stopAll();
 
+    // The system log writes to this volume. Close it before the host owns the
+    // drive: otherwise both sides allocate clusters without seeing the other's,
+    // and the host reads a broken FAT chain or, writing, corrupts the volume.
+    // stop() returns once the file is flushed and closed.
+    if (Component::SystemLogger::isStarted()) {
+        Component::SystemLogger::GetInstance().stop();
+        mSysLogPausedForMsd = true;
+    }
+
     UsbDevice::GetInstance().reinit(true, FLASH_DISK_USR);
 
     OS::Delay(100); // TOTO: Fix App manager
@@ -1639,6 +1648,18 @@ void Backend::guiHandler(const G2BEvent::MsdClose &evt)
     }
 
     mMsdOpen = false;
+
+    // Resume the system log, unless debug_settings.json, reloaded before this
+    // event was posted, was edited to turn it off.
+    if (mSysLogPausedForMsd) {
+        mSysLogPausedForMsd = false;
+        if (Settings::DebugManager::GetInstance().getSettings().logCfg.logToFile) {
+            Component::SystemLogger::GetInstance().start();
+        } else {
+            LOG_INFO("System log turned off\n");
+        }
+    }
+
     sendEventToGui(B2GEvent::MsdState{false});
 
     // The settings were reloaded before this was posted, and the file may have

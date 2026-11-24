@@ -410,6 +410,7 @@ private:
     /// thread only, by the MsdOpen and MsdClose handlers; atomic so the CLI
     /// can read it.
     std::atomic<bool> mMsdOpen {false};
+    bool mSysLogPausedForMsd = false;   // Backend thread only
 
     /// Drive held closed: after closeMsdByHand(), as the host configuring
     /// the device again (which closing it causes) must not reopen it; and

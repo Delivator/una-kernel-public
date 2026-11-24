@@ -168,10 +168,17 @@ bool SystemLogger::start()
     mShutdownPending = false;
     mShutdownDone    = false;
 
-    // Reboot marker (with reset cause) leads the first segment.
+    // Reboot marker (with reset cause) leads the first segment; a later start
+    // (e.g. after the USB drive was closed) is a resume, not a reboot.
+    static bool sStartedBefore = false;
     char marker[64];
-    std::snprintf(marker, sizeof(marker), "\n--- reboot (%s) ---\n",
-                  DRV_SYSTEM_RESET_TO_STR(Driver::System::GetResetReason()));
+    if (!sStartedBefore) {
+        std::snprintf(marker, sizeof(marker), "\n--- reboot (%s) ---\n",
+                      DRV_SYSTEM_RESET_TO_STR(Driver::System::GetResetReason()));
+    } else {
+        std::snprintf(marker, sizeof(marker), "\n--- resumed ---\n");
+    }
+    sStartedBefore = true;
     queueMarker(marker);
 
     mNaming.configure(mFolderName, "syslog", Driver::System::GetDeviceIdStr(), "log", skKeepNewest);
