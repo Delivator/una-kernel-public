@@ -844,6 +844,59 @@ bool PeripheralBlueNRG::isConnected()
     return mState == State::CONNECTED;
 }
 
+bool PeripheralBlueNRG::setCharacteristicOpen(CharacteristicHandle handle)
+{
+    mCore.lock();
+
+    CharacteristicHolder *hchr = findCharacteristic(handle);
+    if (hchr) {
+        hchr->open = true;
+    }
+
+    mCore.release();
+
+    return hchr != nullptr;
+}
+
+bool PeripheralBlueNRG::setSensorMode(bool on)
+{
+    bool status = true;
+
+    mCore.lock();
+
+    if (mSensorMode == on) {
+        mCore.release();
+        return true;
+    }
+
+    mSensorMode = on;
+    LOG_INFO("Sensor mode %s\n", on ? "on" : "off");
+
+    switch (mState) {
+        case State::CONNECTED:
+            // Whoever is connected was let in under the other mode. Drop the
+            // link: onDisconnected() restarts advertising in the new mode.
+            status = terminate();
+            break;
+        case State::ADVERTISE:
+            stopAdv();
+            status = startAdv();
+            break;
+        case State::ENABLED:
+            // Sensor mode advertises without a bond; the normal mode only
+            // with one, so turning it off with no bond leaves BLE quiet.
+            status = startAdv() || !on;
+            break;
+        default:
+            // Not enabled yet: the mode applies from the first startAdvertising().
+            break;
+    }
+
+    mCore.release();
+
+    return status;
+}
+
 bool PeripheralBlueNRG::initServices()
 {
     una_ble_status status { };
@@ -897,9 +950,12 @@ bool PeripheralBlueNRG::initServices()
                     // Get properties
                     uint8_t props = mCharacteristicHolder[j].properties;
 
-                    // Set permissions
-                    uint8_t permissions = (UNA_BLE_ATTR_PERMISSION_ENCRY_READ
-                                        | UNA_BLE_ATTR_PERMISSION_ENCRY_WRITE);
+                    // Set permissions. Open characteristics (sensor mode)
+                    // are reachable without encryption; the CCCD follows the
+                    // characteristic's permissions.
+                    uint8_t permissions = mCharacteristicHolder[j].open ? 0 :
+                            (UNA_BLE_ATTR_PERMISSION_ENCRY_READ
+                            | UNA_BLE_ATTR_PERMISSION_ENCRY_WRITE);
 
                     // Set notification events
                     uint8_t evt = UNA_BLE_GATT_DONT_NOTIFY_EVENTS;
@@ -937,6 +993,10 @@ bool PeripheralBlueNRG::initServices()
 
 bool PeripheralBlueNRG::startAdv(bool pair)
 {
+    if (mSensorMode && !pair) {
+        return startSensorAdv();
+    }
+
     una_ble_status status { };
 
     // Advertise interval
@@ -1029,6 +1089,97 @@ bool PeripheralBlueNRG::startAdv(bool pair)
     } else {
         LOG_WARNING("Advertising not started. No bonded devices\n");
         return false;
+    }
+
+    return status == UNA_BLE_STATUS_SUCCESS;
+}
+
+bool PeripheralBlueNRG::startSensorAdv()
+{
+    una_ble_status status { };
+
+    // Fast enough for a bike computer or a PC to find the watch within a scan
+    // or two, while costing far less than the 50 ms pairing interval.
+    const uint16_t kAdvIntervalMin = BLE_MS_TO_ADV_INTERVAL(100);
+    const uint16_t kAdvIntervalMax = BLE_MS_TO_ADV_INTERVAL(150);
+
+    // Keep the bonds in the controller's resolving list, so a bonded phone that
+    // connects is reported with its resolved identity address and onConnected()
+    // can turn it away. Without a bond the list is simply empty.
+    updateWhitelist();
+
+    // Complete list of the 16-bit UUIDs of the services that hold an open
+    // characteristic: a sensor-mode client finds the watch by them (e.g. Heart
+    // Rate 0x180D). AD type first, as una_ble_gap_set_discoverable() expects.
+    static constexpr uint8_t kAdTypeComplete16BitUuids = 0x03;
+    static constexpr uint32_t kUuidsMax = 4;
+    uint8_t uuidList[1 + 2 * kUuidsMax] { kAdTypeComplete16BitUuids };
+    uint8_t uuidListLen = 1;
+    for (uint32_t i = 0; i < skServicesMax; ++i) {
+        const ServiceHolder &srv = mServiceHolder[i];
+        if (!srv.uuid.isValid() || srv.uuid.is128()) {
+            continue;
+        }
+        bool hasOpen = false;
+        for (uint32_t j = 0; j < skCharacteristicsMax; ++j) {
+            if (mCharacteristicHolder[j].service == &srv && mCharacteristicHolder[j].open) {
+                hasOpen = true;
+                break;
+            }
+        }
+        if (hasOpen && uuidListLen + 2u <= sizeof(uuidList)) {
+            uint16_t uuid = srv.uuid.get16();
+            uuidList[uuidListLen++] = static_cast<uint8_t>(uuid & 0xFF);
+            uuidList[uuidListLen++] = static_cast<uint8_t>(uuid >> 8);
+        }
+    }
+    if (uuidListLen == 1) {
+        LOG_WARNING("Sensor mode: no open characteristics to advertise\n");
+    }
+
+    uint8_t nameLen = strlen(mName);
+    uint8_t nameField[2 + nameLen] {};
+    nameField[0] = 1 + nameLen;                         // Len
+    nameField[1] = UNA_BLE_AD_TYPE_COMPLETE_LOCAL_NAME; // Type
+    memcpy(&nameField[2], mName, nameLen);              // Data
+
+    // The name also goes in the scan response, in case it does not fit in the
+    // advertising data below.
+    status = aciRetry(3, 50, [&]{
+        return una_ble_hci_le_set_scan_response_data(sizeof(nameField),
+                (uint8_t*)nameField);
+    });
+    if (status != UNA_BLE_STATUS_SUCCESS) {
+        LOG_ERROR("una_ble_hci_le_set_scan_response_data() failed [0x%02X]\n", status);
+        return false;
+    }
+
+    // Advertising data: flags + name + service UUIDs + TX power, which the
+    // stack adds by itself. Zero slave connection intervals leave out that AD
+    // structure, so "UNA Watch NNNNNN" fits in the 31 bytes. Should the stack
+    // still refuse it, advertise without the name: the scan response has it.
+    for (uint8_t withName = 1; ; withName = 0) {
+        status = aciRetry(3, 50, [&]{
+            return una_ble_gap_set_discoverable(UNA_BLE_ADV_IND,
+                    kAdvIntervalMin, kAdvIntervalMax,
+                    UNA_BLE_RESOLVABLE_PRIVATE_ADDR,
+                    UNA_BLE_NO_WHITE_LIST_USE,
+                    withName ? sizeof(nameField) - 1 : 0,
+                    withName ? (uint8_t*)&nameField[1] : NULL,
+                    uuidListLen, uuidList,
+                    0, 0);
+        });
+        if (status == UNA_BLE_STATUS_SUCCESS || !withName) {
+            break;
+        }
+        LOG_WARNING("una_ble_gap_set_discoverable() failed [0x%02X], retry without name\n", status);
+    }
+
+    if (status != UNA_BLE_STATUS_SUCCESS) {
+        LOG_ERROR("una_ble_gap_set_discoverable() failed [0x%02X]\n", status);
+    } else {
+        LOG_INFO("Sensor advertising started\n");
+        mState = State::ADVERTISE;
     }
 
     return status == UNA_BLE_STATUS_SUCCESS;
@@ -1138,6 +1289,30 @@ void PeripheralBlueNRG::onConnected(uint16_t connHandle, uint8_t addrType,
     mConnection.addr.setType(static_cast<Ble::Address::Type>(addrType));
 
     LOG_INFO("Connected to %s\n", mConnection.addr.toString(tbuff));
+
+    if (mSensorMode) {
+        mState = Ble::PeripheralBlueNRG::State::CONNECTED;
+
+        // With controller privacy on, a peer the controller resolved against
+        // the bond list is reported with an identity address type (0x02 public
+        // / 0x03 random). Only bonded devices resolve: that is the phone, which
+        // reconnects by itself and would otherwise hold the single peripheral
+        // link. Turn it away before anyone hears of it; the sensor-mode client
+        // is whoever connects next.
+        static constexpr uint8_t kPeerPublicIdentity = 0x02;  // HCI LE Enhanced
+        static constexpr uint8_t kPeerRandomIdentity = 0x03;  // Connection Complete
+        if (addrType == kPeerPublicIdentity || addrType == kPeerRandomIdentity) {
+            LOG_INFO("Sensor mode: bonded device turned away\n");
+            terminate();
+            return;
+        }
+
+        // No security request: the open characteristics need none, and a
+        // bike computer could not answer a passkey anyway.
+        LOG_INFO("Sensor mode: client connected\n");
+        mObserver.notify(&Interface::IBle::StatusCallback::onConnect, mConnection.addr);
+        return;
+    }
 
     // DLE is requested post-encryption (una_ble_hci_encryption_change_event) and via
     // the suggested default set at init -- requesting it here, pre-feature-
@@ -1504,6 +1679,20 @@ void una_ble_gap_pass_key_req_event(uint16_t Connection_Handle)
     assert(instance != nullptr);
     Ble::PeripheralBlueNRG::ConnectionInfo &conn = instance->mConnection;
 
+    // Only the peripheral link is in sensor mode; an accessory link (the watch
+    // as central to a strap) pairs as before.
+    if (instance->mSensorMode && Connection_Handle == conn.handle) {
+        // No pairing in sensor mode: a new bond would let the device in as a
+        // phone later, and the passkey screen would pop up mid-workout. The
+        // open characteristics need no pairing, so drop the link instead.
+        LOG_INFO("Sensor mode: pairing refused\n");
+        una_ble_status status = una_ble_gap_terminate(conn.handle, 0x05);
+        if (status != UNA_BLE_STATUS_SUCCESS) {
+            LOG_ERROR("una_ble_gap_terminate() failed [0x%02X]\n", status);
+        }
+        return;
+    }
+
     // The passkey is the only secret behind MITM-protected pairing, so it comes
     // from the controller's random number generator (HCI LE Rand), never from
     // anything an attacker could predict such as uptime.
@@ -1541,6 +1730,14 @@ void una_ble_gap_pairing_complete_event(uint16_t Connection_Handle, uint8_t Stat
     assert(instance != nullptr);
     Ble::PeripheralBlueNRG::ConnectionInfo &conn = instance->mConnection;
 
+    if (instance->mSensorMode && Connection_Handle == conn.handle) {
+        // A client that tried to pair (e.g. "Just Works", which the MITM
+        // requirement fails) may still use the open characteristics, so the
+        // link stays up. The GUI is not told: there is no pairing to show.
+        LOG_INFO("Sensor mode: pairing ended [0x%02X]. Reason 0x%02X\n", Status, Reason);
+        return;
+    }
+
     if(Status == UNA_BLE_STATUS_SUCCESS) {
         LOG_DEBUG("Paired\n");
         // Next events:
@@ -1563,6 +1760,22 @@ void una_ble_gap_pairing_complete_event(uint16_t Connection_Handle, uint8_t Stat
 void una_ble_hci_encryption_change_event(uint8_t Status, uint16_t Connection_Handle,
         uint8_t Encryption_Enabled)
 {
+    Ble::PeripheralBlueNRG *sensorInstance = Ble::PeripheralBlueNRG::pInstance;
+    if (sensorInstance != nullptr && sensorInstance->mSensorMode
+            && Connection_Handle == sensorInstance->mConnection.handle) {
+        // Pairing is refused in sensor mode, so a link that gets encrypted
+        // reused an existing bond: the phone, whose address the controller did
+        // not resolve at connection time. Turn it away like onConnected() does.
+        if (Status == UNA_BLE_STATUS_SUCCESS && Encryption_Enabled == 1) {
+            LOG_INFO("Sensor mode: bonded device turned away\n");
+            una_ble_status status = una_ble_gap_terminate(Connection_Handle, 0x13);
+            if (status != UNA_BLE_STATUS_SUCCESS) {
+                LOG_ERROR("una_ble_gap_terminate() failed [0x%02X]\n", status);
+            }
+        }
+        return;
+    }
+
     if(Status == UNA_BLE_STATUS_SUCCESS && Encryption_Enabled == 1) {
         LOG_INFO("Encrypted. Connection_Handle 0x%04X\n", Connection_Handle);
 

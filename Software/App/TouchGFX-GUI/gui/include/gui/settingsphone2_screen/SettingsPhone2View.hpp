@@ -14,9 +14,21 @@ public:
 
     void connected(bool connected);
     void bonded(uint8_t count);
+    void hrBroadcast(bool on);
 
 protected:
     virtual void handleKeyEvent(uint8_t key) override;
+
+private:
+    // "HR Broadcast" is not in the text database: the menu items' wildcard
+    // texts show it from this buffer.
+    static constexpr uint16_t skLabelSize = 16;
+    touchgfx::Unicode::UnicodeChar mHrBroadcastLabel[skLabelSize] {};
+
+    bool mConnected = false;
+    bool mHrBroadcast = false;
+
+    void updateItems();
 };
 
 #endif // SETTINGSPHONE2VIEW_HPP

@@ -17,6 +17,7 @@ public:
 
     void configTip(TypedTextId msgId, TypedTextId msgIdTip);
     void configTip(TypedTextId msgId, touchgfx::Unicode::UnicodeChar *msgTip);
+    void configTip(touchgfx::Unicode::UnicodeChar *msg, TypedTextId msgIdTip);
 
     void configIcon(BitmapId iconId, TypedTextId msgId);
     void configIcon(BitmapId iconId, touchgfx::Unicode::UnicodeChar *msg);

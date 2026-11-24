@@ -31,9 +31,11 @@ public:
 
     virtual void onBleBond(bool paired) override;
     virtual void onBleConnect(bool connected) override;
+    virtual void onHrBroadcast(bool on) override;
 
     void unpair();
     void startPairing();
+    void setHrBroadcast(bool on);
 
 private:
     SettingsPhone2Presenter();

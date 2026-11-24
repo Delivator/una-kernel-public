@@ -628,6 +628,39 @@ public:
      */
     virtual bool isTransferQuiet(uint32_t quietMs) const = 0;
 
+    // Sensor mode. Optional
+    /**
+     * @brief   Let a remote device read and subscribe to a characteristic over
+     *          an unencrypted link. Everything else in the GATT database needs
+     *          an encrypted (bonded) link.
+     * @note    Call before enable(): the permissions are fixed when the GATT
+     *          database is built.
+     * @param   handle: Handle of the characteristic.
+     * @retval  'true' - the characteristic is open, 'false' - not supported.
+     */
+    virtual bool setCharacteristicOpen(Ble::CharacteristicHandle /*handle*/) { return false; }
+
+    /**
+     * @brief   Turn sensor mode on or off.
+     *
+     * In sensor mode the watch acts like a stand-alone BLE sensor: it
+     * advertises to anyone, lists the services that hold open characteristics
+     * (see setCharacteristicOpen()) in its advertising data, and accepts a
+     * connection without pairing. Bonded devices (the phone) are turned away
+     * and pairing is refused, so only the open characteristics are reachable.
+     * Turning the mode on or off drops the current connection.
+     *
+     * @param   on: 'true' - sensor mode, 'false' - the normal phone link.
+     * @retval  'true' - the mode is set, 'false' - not supported or failed.
+     */
+    virtual bool setSensorMode(bool /*on*/) { return false; }
+
+    /**
+     * @brief   Check if sensor mode is on.
+     * @retval  'true' - sensor mode is on, 'false' - otherwise.
+     */
+    virtual bool isSensorMode() const { return false; }
+
     // iOS phone-link GATT clients (ANCS notifications, AMS media) live in the
     // Ble::ClientANCS / Ble::ClientAMS components and are consumed directly, so
     // they are intentionally not part of this interface.

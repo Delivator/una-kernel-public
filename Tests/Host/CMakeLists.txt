@@ -158,6 +158,7 @@ add_executable(una-host-tests
     kernel/ParserCANS_test.cpp
     kernel/PhoneNotification_test.cpp
     kernel/GuardPath_test.cpp
+    kernel/HrsMeasurement_test.cpp
     kernel/HrSourceArbiter_test.cpp
     kernel/HrTracker_test.cpp
     kernel/ImuFifoLatency_test.cpp

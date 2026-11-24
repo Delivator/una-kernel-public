@@ -260,6 +260,21 @@ public:
      */
     virtual bool isConnected() override;
 
+    /**
+     * @copydoc Interface::IBle::setCharacteristicOpen()
+     */
+    virtual bool setCharacteristicOpen(CharacteristicHandle handle) override;
+
+    /**
+     * @copydoc Interface::IBle::setSensorMode()
+     */
+    virtual bool setSensorMode(bool on) override;
+
+    /**
+     * @copydoc Interface::IBle::isSensorMode()
+     */
+    virtual bool isSensorMode() const override { return mSensorMode; }
+
 
     /**
      * @brief   Start FCC TX test (LE transmitter test).
@@ -360,6 +375,10 @@ private:
 
     State mState { };
 
+    // Sensor mode (see Interface::IBle::setSensorMode()). Read on the BLE
+    // event thread, written under mCore.
+    volatile bool mSensorMode { false };
+
     static const uint32_t skNameLenMax = 20;
     char mName[skNameLenMax];
 
@@ -420,6 +439,7 @@ private:
         ServiceHolder *service;
         uint16_t handle;
         Interface::IBle::CharacteristicCallback *callback;
+        bool open;      // Reachable without encryption (sensor mode)
 
         void clear()
         {
@@ -429,6 +449,7 @@ private:
             service = nullptr;
             handle = 0;
             callback = nullptr;
+            open = false;
         }
     };
     CharacteristicHolder mCharacteristicHolder[skCharacteristicsMax] {};
@@ -444,6 +465,7 @@ private:
 
     bool initServices();
     bool startAdv(bool pair = false);
+    bool startSensorAdv();
     bool stopAdv();
     bool terminate();
     bool updateWhitelist();

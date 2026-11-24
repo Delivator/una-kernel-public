@@ -106,6 +106,10 @@ public:
     void bleStartFCC(const BleChannelsFCC::Info& ch);
     void bleStopFCC();
 
+    // BLE heart-rate broadcast
+    bool hrBroadcastIsOn();
+    void hrBroadcastSet(bool on);
+
     // BLE Phone notification
     void phoneNotificationPlay();
     void phoneNotificationStop();
@@ -392,6 +396,7 @@ protected:
         bool manualStart = false;
         bool reconnected = false;
         uint32_t pinCode = 0;
+        bool hrBroadcast = false;
     } mBle {};
 
     struct {
@@ -564,6 +569,7 @@ protected:
     void onDataEvent(const B2GEvent::BlePinCode &evt);
     void onDataEvent(const B2GEvent::BlePair &evt);
     void onDataEvent(const B2GEvent::BleReconnect &evt);
+    void onDataEvent(const B2GEvent::HrBroadcast &evt);
     void onDataEvent(const B2GEvent::BatteryLevel &evt);
     void onDataEvent(const B2GEvent::BatteryCharge &evt);
     void onDataEvent(const B2GEvent::ChargingBlocked &evt);

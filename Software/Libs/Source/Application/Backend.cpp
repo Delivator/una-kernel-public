@@ -246,6 +246,13 @@ void Backend::thread()
             pBleMediaService->attachCallback(this);
         }
 
+        // Last, so its attributes come after every other service's and the
+        // handles a bonded phone has cached stay where they were.
+        pBleHeartRateService = new (std::nothrow) Ble::HeartRateService(ble);
+        if (pBleHeartRateService) {
+            pHrBroadcast = new (std::nothrow) HrBroadcast(ble, *pBleHeartRateService);
+        }
+
         if (settingsDebug.bleCfg.useNUS && settingsDebug.logCfg.logToBLE &&
                 pBleNordicUartService)
         {
@@ -487,7 +494,7 @@ void Backend::bleMonitorTimCallback(void *arg)
             // Fall through to enable() on next timer tick
             return;
         }
-        if (ble.isBonded()) {
+        if (ble.isBonded() || ble.isSensorMode()) {
             LOG_WARNING("Restart BLE advertising\n");
             ble.startAdvertising();
         }
@@ -501,7 +508,7 @@ void Backend::bleMonitorTimCallback(void *arg)
         // Update bond state in GUI
         sendEventToGui(B2GEvent::BleBond {ble.getBondedCount()});
 
-        if (isBonded) {
+        if (isBonded || ble.isSensorMode()) {
             ble.startAdvertising();
         }
     }
@@ -694,6 +701,13 @@ void Backend::guiHandler(const G2BEvent::VibroCtrl &evt)
 void Backend::guiHandler(const G2BEvent::BleStartPairing &evt)
 {
     LOG_DEBUG("BleStartPairing\n");
+
+    // Pairing needs the normal phone link: end the heart-rate broadcast.
+    if (pHrBroadcast && pHrBroadcast->isActive()) {
+        pHrBroadcast->stop();
+        sendEventToGui(B2GEvent::HrBroadcast{ false });
+    }
+
     if (!ComponentFactory::GetInstance().getBle().pair()) {
         sendEventToGui(B2GEvent::BlePair { false });
     }
@@ -744,6 +758,22 @@ void Backend::guiHandler(const G2BEvent::BleStopFCC &evt)
     bleMonitorTimCallback(nullptr);
     // Restart BLE monitor timer
     mBleMonitorTimer.start(skBleMonitorPeriodMs);
+}
+
+void Backend::guiHandler(const G2BEvent::HrBroadcastSet &evt)
+{
+    LOG_INFO("HrBroadcastSet %d\n", evt.on);
+
+    bool on = false;
+    if (pHrBroadcast) {
+        if (evt.on) {
+            on = pHrBroadcast->start();
+        } else {
+            pHrBroadcast->stop();
+        }
+    }
+
+    sendEventToGui(B2GEvent::HrBroadcast{ on });
 }
 
 void Backend::guiHandler(const G2BEvent::PhoneNotificationPositiveAction &evt)
@@ -2308,6 +2338,12 @@ void Backend::onConnect(const Ble::Address &addr)
 #endif
 
     mBlePinRequested = false;
+
+    // In sensor mode the link is a heart-rate client, not the phone: the
+    // GUI's connection state is the phone's.
+    if (ComponentFactory::GetInstance().getBle().isSensorMode()) {
+        return;
+    }
     sendEventToGui(B2GEvent::BleConnect{true});
 }
 

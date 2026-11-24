@@ -29,6 +29,8 @@
 #include "BLE/Services/MediaService.hpp"
 #include "BLE/Services/CustomCommandService.hpp"
 #include "BLE/Services/NordicUartService.hpp"
+#include "BLE/Services/HeartRateService.hpp"
+#include "HrBroadcast.hpp"
 
 #include "SettingsAppSorting.hpp"
 
@@ -162,6 +164,8 @@ private:
     Ble::MediaService *pBleMediaService = nullptr;
     Ble::CustomCommandService *pBleCustomCommandService = nullptr;
     Ble::NordicUartService *pBleNordicUartService = nullptr;
+    Ble::HeartRateService *pBleHeartRateService = nullptr;
+    HrBroadcast *pHrBroadcast = nullptr;
 
     // Core (MCU) module identification. Loaded from ModuleInfoStorage and kept
     // alive for the BLE DIS, which stores a pointer into it rather than a copy.
@@ -275,6 +279,7 @@ private:
     void guiHandler(const G2BEvent::BleUnpair &evt);
     void guiHandler(const G2BEvent::BleStartFCC &evt);
     void guiHandler(const G2BEvent::BleStopFCC &evt);
+    void guiHandler(const G2BEvent::HrBroadcastSet &evt);
 
     void guiHandler(const G2BEvent::PhoneNotificationPositiveAction &evt);
     void guiHandler(const G2BEvent::PhoneNotificationNegativeAction &evt);
