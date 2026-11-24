@@ -479,6 +479,12 @@ void Backend::bleMonitorTimCallback(void *arg)
 {
     Interface::IBle &ble = ComponentFactory::GetInstance().getBle();
 
+    // A sensor-mode switch restarts the chip on another thread: BLE only looks
+    // disabled meanwhile, and restarting it here would race the switch.
+    if (ble.isSwitchingMode()) {
+        return;
+    }
+
     if (ble.isConnected()) {
         return;
     }

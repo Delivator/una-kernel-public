@@ -668,6 +668,12 @@ public:
      */
     virtual bool isSensorMode() const { return false; }
 
+    /**
+     * @brief   Check if a setSensorMode() call is restarting BLE right now.
+     *          BLE looks disabled meanwhile; it is not to be restarted.
+     */
+    virtual bool isSwitchingMode() const { return false; }
+
     // iOS phone-link GATT clients (ANCS notifications, AMS media) live in the
     // Ble::ClientANCS / Ble::ClientAMS components and are consumed directly, so
     // they are intentionally not part of this interface.

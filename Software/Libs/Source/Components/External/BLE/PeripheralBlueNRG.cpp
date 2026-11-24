@@ -881,6 +881,8 @@ bool PeripheralBlueNRG::setSensorMode(bool on)
         return true;
     }
 
+    mSwitchingMode = true;
+
     bool status = restartForMode();
 
     if (!status && on) {
@@ -889,6 +891,8 @@ bool PeripheralBlueNRG::setSensorMode(bool on)
         mSensorMode = false;
         restartForMode();
     }
+
+    mSwitchingMode = false;
 
     mCore.release();
 
@@ -1155,18 +1159,40 @@ bool PeripheralBlueNRG::startSensorAdv()
 {
     una_ble_status status { };
 
-    // Fast enough for a bike computer or a PC to find the watch within a scan
-    // or two, while costing far less than the 50 ms pairing interval.
-    const uint16_t kAdvIntervalMin = BLE_MS_TO_ADV_INTERVAL(100);
-    const uint16_t kAdvIntervalMax = BLE_MS_TO_ADV_INTERVAL(150);
-
-    // Advertise from a non-resolvable private address (HCI own address type
-    // 0x03), not from the watch's resolvable one: a bonded phone resolves
-    // that with the watch's IRK, so its OS reconnects by itself and every app
-    // on it reaches the watch as the bonded device. From an address no bond
-    // leads to, the watch is a new, unknown sensor to everyone, the paired
-    // phone's apps included. The address changes with every chip start.
+    // The own address must be one that no bond leads to: a bonded phone
+    // resolves the watch's resolvable private address with its IRK, so its OS
+    // reconnects by itself and every app on it reaches the watch as the bonded
+    // device. Pairing hands out only the static random identity address, so
+    // the chip's public address, if one is programmed, is unknown to every
+    // bond and fixed, which lets a bike computer find the same sensor every
+    // time. Without one, a non-resolvable private address: unknown as well,
+    // but new with every advertising start.
+    static constexpr uint8_t kOwnAddrPublic = 0x00;
     static constexpr uint8_t kOwnAddrNonResolvable = 0x03;
+    static constexpr uint8_t kConfigPublicAddress = 0x00;
+
+    uint8_t ownAddrType = kOwnAddrNonResolvable;
+    uint8_t pubAddr[6] {};
+    uint8_t pubAddrLen = 0;
+    if (una_ble_hal_read_config_data(kConfigPublicAddress, &pubAddrLen, pubAddr)
+            == UNA_BLE_STATUS_SUCCESS && pubAddrLen == sizeof(pubAddr))
+    {
+        bool allZero = true;
+        bool allOnes = true;
+        for (uint8_t b : pubAddr) {
+            allZero = allZero && b == 0x00;
+            allOnes = allOnes && b == 0xFF;
+        }
+        if (!allZero && !allOnes) {
+            ownAddrType = kOwnAddrPublic;
+        }
+    }
+    if (ownAddrType == kOwnAddrPublic) {
+        LOG_INFO("Sensor mode: public address %02X:%02X:%02X:%02X:%02X:%02X\n",
+                pubAddr[5], pubAddr[4], pubAddr[3], pubAddr[2], pubAddr[1], pubAddr[0]);
+    } else {
+        LOG_INFO("Sensor mode: no public address, a non-resolvable one\n");
+    }
 
     // Complete list of the 16-bit UUIDs of the services that hold an open
     // characteristic: a sensor-mode client finds the watch by them (e.g. Heart
@@ -1214,6 +1240,39 @@ bool PeripheralBlueNRG::startSensorAdv()
         return false;
     }
 
+    status = setSensorDiscoverable(ownAddrType, uuidListLen, uuidList);
+    if (status != UNA_BLE_STATUS_SUCCESS && ownAddrType != kOwnAddrNonResolvable) {
+        LOG_WARNING("Advertising from the public address failed [0x%02X], "
+                "a non-resolvable one instead\n", status);
+        status = setSensorDiscoverable(kOwnAddrNonResolvable, uuidListLen, uuidList);
+    }
+
+    if (status != UNA_BLE_STATUS_SUCCESS) {
+        LOG_ERROR("una_ble_gap_set_discoverable() failed [0x%02X]\n", status);
+    } else {
+        LOG_INFO("Sensor advertising started\n");
+        mState = State::ADVERTISE;
+    }
+
+    return status == UNA_BLE_STATUS_SUCCESS;
+}
+
+una_ble_status PeripheralBlueNRG::setSensorDiscoverable(uint8_t ownAddrType,
+        uint8_t uuidListLen, uint8_t *uuidList)
+{
+    una_ble_status status { };
+
+    // Fast enough for a bike computer or a PC to find the watch within a scan
+    // or two, while costing far less than the 50 ms pairing interval.
+    const uint16_t kAdvIntervalMin = BLE_MS_TO_ADV_INTERVAL(100);
+    const uint16_t kAdvIntervalMax = BLE_MS_TO_ADV_INTERVAL(150);
+
+    uint8_t nameLen = strlen(mName);
+    uint8_t nameField[2 + nameLen] {};
+    nameField[0] = 1 + nameLen;                         // Len
+    nameField[1] = UNA_BLE_AD_TYPE_COMPLETE_LOCAL_NAME; // Type
+    memcpy(&nameField[2], mName, nameLen);              // Data
+
     // Advertising data: flags + name + service UUIDs + TX power, which the
     // stack adds by itself. Zero slave connection intervals leave out that AD
     // structure, so "UNA Watch NNNNNN" fits in the 31 bytes. Should the stack
@@ -1222,7 +1281,7 @@ bool PeripheralBlueNRG::startSensorAdv()
         status = aciRetry(3, 50, [&]{
             return una_ble_gap_set_discoverable(UNA_BLE_ADV_IND,
                     kAdvIntervalMin, kAdvIntervalMax,
-                    kOwnAddrNonResolvable,
+                    ownAddrType,
                     UNA_BLE_NO_WHITE_LIST_USE,
                     withName ? sizeof(nameField) - 1 : 0,
                     withName ? (uint8_t*)&nameField[1] : NULL,
@@ -1235,14 +1294,7 @@ bool PeripheralBlueNRG::startSensorAdv()
         LOG_WARNING("una_ble_gap_set_discoverable() failed [0x%02X], retry without name\n", status);
     }
 
-    if (status != UNA_BLE_STATUS_SUCCESS) {
-        LOG_ERROR("una_ble_gap_set_discoverable() failed [0x%02X]\n", status);
-    } else {
-        LOG_INFO("Sensor advertising started\n");
-        mState = State::ADVERTISE;
-    }
-
-    return status == UNA_BLE_STATUS_SUCCESS;
+    return status;
 }
 
 bool PeripheralBlueNRG::stopAdv()

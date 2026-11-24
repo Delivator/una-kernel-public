@@ -275,6 +275,11 @@ public:
      */
     virtual bool isSensorMode() const override { return mSensorMode; }
 
+    /**
+     * @copydoc Interface::IBle::isSwitchingMode()
+     */
+    virtual bool isSwitchingMode() const override { return mSwitchingMode; }
+
 
     /**
      * @brief   Start FCC TX test (LE transmitter test).
@@ -378,6 +383,7 @@ private:
     // Sensor mode (see Interface::IBle::setSensorMode()). Read on the BLE
     // event thread, written under mCore.
     volatile bool mSensorMode { false };
+    volatile bool mSwitchingMode { false };
 
     static const uint32_t skNameLenMax = 20;
     char mName[skNameLenMax];
@@ -466,6 +472,12 @@ private:
     bool initServices();
     bool startAdv(bool pair = false);
     bool startSensorAdv();
+
+    /**
+     * @brief   Advertise the sensor services from the given own address type.
+     */
+    una_ble_status setSensorDiscoverable(uint8_t ownAddrType,
+            uint8_t uuidListLen, uint8_t *uuidList);
 
     /**
      * @brief   Restart the BLE chip so the GATT database follows mSensorMode,
