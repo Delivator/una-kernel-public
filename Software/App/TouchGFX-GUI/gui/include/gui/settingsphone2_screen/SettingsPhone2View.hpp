@@ -20,8 +20,8 @@ protected:
     virtual void handleKeyEvent(uint8_t key) override;
 
 private:
-    // "HR Broadcast" is not in the text database: the menu items' wildcard
-    // texts show it from this buffer.
+    // "Share HR" (the HR broadcast toggle) is not in the text database: the
+    // menu items' wildcard texts show it from this buffer.
     static constexpr uint16_t skLabelSize = 16;
     touchgfx::Unicode::UnicodeChar mHrBroadcastLabel[skLabelSize] {};
 

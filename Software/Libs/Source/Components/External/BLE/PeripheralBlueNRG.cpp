@@ -1160,10 +1160,13 @@ bool PeripheralBlueNRG::startSensorAdv()
     const uint16_t kAdvIntervalMin = BLE_MS_TO_ADV_INTERVAL(100);
     const uint16_t kAdvIntervalMax = BLE_MS_TO_ADV_INTERVAL(150);
 
-    // Keep the bonds in the controller's resolving list, so a bonded phone that
-    // connects is reported with its resolved identity address and onConnected()
-    // can turn it away. Without a bond the list is simply empty.
-    updateWhitelist();
+    // Advertise from a non-resolvable private address (HCI own address type
+    // 0x03), not from the watch's resolvable one: a bonded phone resolves
+    // that with the watch's IRK, so its OS reconnects by itself and every app
+    // on it reaches the watch as the bonded device. From an address no bond
+    // leads to, the watch is a new, unknown sensor to everyone, the paired
+    // phone's apps included. The address changes with every chip start.
+    static constexpr uint8_t kOwnAddrNonResolvable = 0x03;
 
     // Complete list of the 16-bit UUIDs of the services that hold an open
     // characteristic: a sensor-mode client finds the watch by them (e.g. Heart
@@ -1219,7 +1222,7 @@ bool PeripheralBlueNRG::startSensorAdv()
         status = aciRetry(3, 50, [&]{
             return una_ble_gap_set_discoverable(UNA_BLE_ADV_IND,
                     kAdvIntervalMin, kAdvIntervalMax,
-                    UNA_BLE_RESOLVABLE_PRIVATE_ADDR,
+                    kOwnAddrNonResolvable,
                     UNA_BLE_NO_WHITE_LIST_USE,
                     withName ? sizeof(nameField) - 1 : 0,
                     withName ? (uint8_t*)&nameField[1] : NULL,
@@ -1349,20 +1352,6 @@ void PeripheralBlueNRG::onConnected(uint16_t connHandle, uint8_t addrType,
 
     if (mSensorMode) {
         mState = Ble::PeripheralBlueNRG::State::CONNECTED;
-
-        // With controller privacy on, a peer the controller resolved against
-        // the bond list is reported with an identity address type (0x02 public
-        // / 0x03 random). Only bonded devices resolve: that is the phone, which
-        // reconnects by itself and would otherwise hold the single peripheral
-        // link. Turn it away before anyone hears of it; the sensor-mode client
-        // is whoever connects next.
-        static constexpr uint8_t kPeerPublicIdentity = 0x02;  // HCI LE Enhanced
-        static constexpr uint8_t kPeerRandomIdentity = 0x03;  // Connection Complete
-        if (addrType == kPeerPublicIdentity || addrType == kPeerRandomIdentity) {
-            LOG_INFO("Sensor mode: bonded device turned away\n");
-            terminate();
-            return;
-        }
 
         // No security request: the open characteristics need none, and a
         // bike computer could not answer a passkey anyway.
@@ -1820,15 +1809,11 @@ void una_ble_hci_encryption_change_event(uint8_t Status, uint16_t Connection_Han
     Ble::PeripheralBlueNRG *sensorInstance = Ble::PeripheralBlueNRG::pInstance;
     if (sensorInstance != nullptr && sensorInstance->mSensorMode
             && Connection_Handle == sensorInstance->mConnection.handle) {
-        // Pairing is refused in sensor mode, so a link that gets encrypted
-        // reused an existing bond: the phone, whose address the controller did
-        // not resolve at connection time. Turn it away like onConnected() does.
+        // The sensor address leads to no bond, so no peer should encrypt.
+        // If one does, the open characteristics work either way: keep the
+        // link, but none of the phone's set-up below applies.
         if (Status == UNA_BLE_STATUS_SUCCESS && Encryption_Enabled == 1) {
-            LOG_INFO("Sensor mode: bonded device turned away\n");
-            una_ble_status status = una_ble_gap_terminate(Connection_Handle, 0x13);
-            if (status != UNA_BLE_STATUS_SUCCESS) {
-                LOG_ERROR("una_ble_gap_terminate() failed [0x%02X]\n", status);
-            }
+            LOG_INFO("Sensor mode: link encrypted\n");
         }
         return;
     }

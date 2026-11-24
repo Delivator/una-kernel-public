@@ -646,8 +646,9 @@ public:
      *
      * In sensor mode the watch acts like a stand-alone BLE sensor: its GATT
      * database holds only the sensor services (see setCharacteristicOpen()),
-     * it advertises them to anyone and accepts a connection without pairing.
-     * Bonded devices (the phone) are turned away and pairing is refused.
+     * it advertises them to anyone from an address that no bond leads to, so
+     * even the paired phone sees an unknown sensor, and accepts a connection
+     * without pairing. Pairing is refused.
      * Outside sensor mode the database is the phone's alone, as if no sensor
      * service existed.
      *

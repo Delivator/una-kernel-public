@@ -25,7 +25,7 @@ void SettingsPhone2View::setupScreen()
     pN->config(T_TEXT_PAIR_ANOTHER);
 
     // HR BROADCAST
-    touchgfx::Unicode::strncpy(mHrBroadcastLabel, "HR Broadcast", skLabelSize - 1);
+    touchgfx::Unicode::strncpy(mHrBroadcastLabel, "Share HR", skLabelSize - 1);
     pS = menu.getSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_HR_BROADCAST);
     pS->configToggle(mHrBroadcastLabel);
     pS->setMsgTypedTextId(T_TMP_SEMIBOLD_25);
