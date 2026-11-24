@@ -466,6 +466,19 @@ private:
     bool initServices();
     bool startAdv(bool pair = false);
     bool startSensorAdv();
+
+    /**
+     * @brief   Restart the BLE chip so the GATT database follows mSensorMode,
+     *          then advertise. Call with the core mutex held.
+     * @retval  'true' - enabled in the current mode, 'false' - failed.
+     */
+    bool restartForMode();
+
+    /**
+     * @brief   Check if a service belongs to sensor mode: it holds at least
+     *          one open characteristic.
+     */
+    bool isSensorService(const ServiceHolder &srv) const;
     bool stopAdv();
     bool terminate();
     bool updateWhitelist();

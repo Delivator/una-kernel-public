@@ -631,8 +631,9 @@ public:
     // Sensor mode. Optional
     /**
      * @brief   Let a remote device read and subscribe to a characteristic over
-     *          an unencrypted link. Everything else in the GATT database needs
-     *          an encrypted (bonded) link.
+     *          an unencrypted link. A service that holds an open characteristic
+     *          is a sensor service: it is in the GATT database only in sensor
+     *          mode, and the other services only outside it.
      * @note    Call before enable(): the permissions are fixed when the GATT
      *          database is built.
      * @param   handle: Handle of the characteristic.
@@ -643,15 +644,20 @@ public:
     /**
      * @brief   Turn sensor mode on or off.
      *
-     * In sensor mode the watch acts like a stand-alone BLE sensor: it
-     * advertises to anyone, lists the services that hold open characteristics
-     * (see setCharacteristicOpen()) in its advertising data, and accepts a
-     * connection without pairing. Bonded devices (the phone) are turned away
-     * and pairing is refused, so only the open characteristics are reachable.
-     * Turning the mode on or off drops the current connection.
+     * In sensor mode the watch acts like a stand-alone BLE sensor: its GATT
+     * database holds only the sensor services (see setCharacteristicOpen()),
+     * it advertises them to anyone and accepts a connection without pairing.
+     * Bonded devices (the phone) are turned away and pairing is refused.
+     * Outside sensor mode the database is the phone's alone, as if no sensor
+     * service existed.
+     *
+     * Changing the mode of an enabled BLE restarts the BLE chip with the other
+     * database, which drops the current connection; bonds are kept. If sensor
+     * mode cannot start, BLE goes back to the normal mode.
      *
      * @param   on: 'true' - sensor mode, 'false' - the normal phone link.
-     * @retval  'true' - the mode is set, 'false' - not supported or failed.
+     * @retval  'true' - the mode is set, 'false' - not supported or failed
+     *          (and the mode is off).
      */
     virtual bool setSensorMode(bool /*on*/) { return false; }
 

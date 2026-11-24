@@ -591,6 +591,11 @@ bool PeripheralBlueNRG::setCharacteristicValue(Ble::CharacteristicHandle handle,
     uint32_t budgetMs = 250;
     mCore.lock();
     CharacteristicHolder *hchr = findCharacteristic(handle);
+    if (hchr && hchr->handle == 0) {
+        // Not in the current mode's database
+        mCore.release();
+        return false;
+    }
     if (hchr && (hchr->properties & CharProp::INDICATE)) {
         budgetMs = 500;
     }
@@ -638,7 +643,7 @@ bool PeripheralBlueNRG::trySetCharacteristicValue(Ble::CharacteristicHandle hand
     mCore.lock();
     CharacteristicHolder *hchr = findCharacteristic(handle);
     una_ble_status status = UNA_BLE_STATUS_FAILED;
-    if (hchr) {
+    if (hchr && hchr->handle != 0) {
         status = una_ble_gatt_update_char_value(hchr->service->handle,
                 hchr->handle, 0, len, (uint8_t*) pData);
     }
@@ -860,8 +865,6 @@ bool PeripheralBlueNRG::setCharacteristicOpen(CharacteristicHandle handle)
 
 bool PeripheralBlueNRG::setSensorMode(bool on)
 {
-    bool status = true;
-
     mCore.lock();
 
     if (mSensorMode == on) {
@@ -872,29 +875,69 @@ bool PeripheralBlueNRG::setSensorMode(bool on)
     mSensorMode = on;
     LOG_INFO("Sensor mode %s\n", on ? "on" : "off");
 
-    switch (mState) {
-        case State::CONNECTED:
-            // Whoever is connected was let in under the other mode. Drop the
-            // link: onDisconnected() restarts advertising in the new mode.
-            status = terminate();
-            break;
-        case State::ADVERTISE:
-            stopAdv();
-            status = startAdv();
-            break;
-        case State::ENABLED:
-            // Sensor mode advertises without a bond; the normal mode only
-            // with one, so turning it off with no bond leaves BLE quiet.
-            status = startAdv() || !on;
-            break;
-        default:
-            // Not enabled yet: the mode applies from the first startAdvertising().
-            break;
+    if (mState < State::ENABLED) {
+        // Not enabled yet: the mode applies from the next enable()
+        mCore.release();
+        return true;
+    }
+
+    bool status = restartForMode();
+
+    if (!status && on) {
+        // Never leave the phone without its link: back to the normal mode
+        LOG_ERROR("Sensor mode failed, back to the normal mode\n");
+        mSensorMode = false;
+        restartForMode();
     }
 
     mCore.release();
 
     return status;
+}
+
+bool PeripheralBlueNRG::restartForMode()
+{
+    // The GATT database can only be built once per chip start, and each mode
+    // has its own: restart the chip. The bonds live in the chip's flash and
+    // stay.
+    bool wasConnected = (mState == State::CONNECTED);
+
+    disable();
+
+    if (wasConnected) {
+        // The chip reset dropped the link without a disconnection event
+        blePeripheralClients().reset();
+        mObserver.notify(&Interface::IBle::StatusCallback::onDisconnect, 0x16);
+    }
+
+    if (!enable()) {
+        LOG_ERROR("Enable in %s mode failed\n", mSensorMode ? "sensor" : "normal");
+        return false;
+    }
+
+    // Sensor mode advertises to anyone; the normal mode only with a bond,
+    // like Backend's start-up.
+    if (mSensorMode || isBondedAtLeastOne()) {
+        if (!startAdv()) {
+            LOG_ERROR("Advertising in %s mode failed\n", mSensorMode ? "sensor" : "normal");
+            return !mSensorMode;    // A quiet normal mode recovers by itself
+        }
+    }
+
+    return true;
+}
+
+bool PeripheralBlueNRG::isSensorService(const ServiceHolder &srv) const
+{
+    for (uint32_t j = 0; j < skCharacteristicsMax; j++) {
+        if (mCharacteristicHolder[j].uuid.isValid()
+                && mCharacteristicHolder[j].service == &srv
+                && mCharacteristicHolder[j].open)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool PeripheralBlueNRG::initServices()
@@ -903,6 +946,20 @@ bool PeripheralBlueNRG::initServices()
 
     for (uint32_t i = 0; i < skServicesMax; i++) {
         if (mServiceHolder[i].uuid.isValid()) {
+            // Each mode has its own database: the sensor services in sensor
+            // mode, the others outside it. A service left out keeps handle 0,
+            // as do its characteristics, so nothing resolves to it and
+            // updating its values fails without reaching the chip.
+            if (isSensorService(mServiceHolder[i]) != mSensorMode) {
+                mServiceHolder[i].handle = 0;
+                for (uint32_t j = 0; j < skCharacteristicsMax; j++) {
+                    if (mCharacteristicHolder[j].service == &mServiceHolder[i]) {
+                        mCharacteristicHolder[j].handle = 0;
+                    }
+                }
+                continue;
+            }
+
             // Get UUID
             const UUID &srvuuid = mServiceHolder[i].uuid;
 
