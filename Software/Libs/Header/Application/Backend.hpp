@@ -22,6 +22,7 @@
 #include "IBle.hpp"
 #include "BLE/Services/DeviceInformationService.hpp"
 #include "BLE/Accessory/AccessoryCentral.hpp"
+#include "App/AccessoryManager.hpp"
 #include "BLE/Services/CurrentTimeService.hpp"
 #include "BLE/Services/BatteryService.hpp"
 #include "BLE/Services/FileTransferService.hpp"
@@ -29,6 +30,8 @@
 #include "BLE/Services/MediaService.hpp"
 #include "BLE/Services/CustomCommandService.hpp"
 #include "BLE/Services/NordicUartService.hpp"
+#include "BLE/Services/HeartRateService.hpp"
+#include "HrBroadcast.hpp"
 
 #include "SettingsAppSorting.hpp"
 
@@ -82,6 +85,7 @@ struct Backend : public IGuiBackend,
                  public ErrorMonitor::Callback,
                  public Ble::AccessoryCentral::ScanCallback,
                  public Ble::AccessoryCentral::StatusCallback,
+                 public App::AccessoryManager::AcquireListener,
                  public Instance::MagCalRunner::Owner,
                  public Compass::Listener,
                  public SDK::Interface::ISensorDataListener
@@ -162,6 +166,8 @@ private:
     Ble::MediaService *pBleMediaService = nullptr;
     Ble::CustomCommandService *pBleCustomCommandService = nullptr;
     Ble::NordicUartService *pBleNordicUartService = nullptr;
+    Ble::HeartRateService *pBleHeartRateService = nullptr;
+    HrBroadcast *pHrBroadcast = nullptr;
 
     // Core (MCU) module identification. Loaded from ModuleInfoStorage and kept
     // alive for the BLE DIS, which stores a pointer into it rather than a copy.
@@ -275,6 +281,7 @@ private:
     void guiHandler(const G2BEvent::BleUnpair &evt);
     void guiHandler(const G2BEvent::BleStartFCC &evt);
     void guiHandler(const G2BEvent::BleStopFCC &evt);
+    void guiHandler(const G2BEvent::HrBroadcastSet &evt);
 
     void guiHandler(const G2BEvent::PhoneNotificationPositiveAction &evt);
     void guiHandler(const G2BEvent::PhoneNotificationNegativeAction &evt);
@@ -453,6 +460,10 @@ private:
     // the SDK::Accessory::State contract and pushes it to the GUI.
     void onAccessoryStatus(Ble::AccessoryCentral::LinkStatus status,
             const char *name) override;
+
+    // App::AccessoryManager::AcquireListener - Share HR ends before a strap
+    // is searched for.
+    void onAccessoryAcquire() override;
 
     // Push the accessory feature flag + remembered list to the GUI.
     void sendAccessoryConfig();

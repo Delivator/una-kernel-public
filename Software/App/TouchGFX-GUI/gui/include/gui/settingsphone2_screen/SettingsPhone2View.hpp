@@ -14,9 +14,25 @@ public:
 
     void connected(bool connected);
     void bonded(uint8_t count);
+    void hrBroadcast(bool on);
+    void strapInUse();
 
 protected:
     virtual void handleKeyEvent(uint8_t key) override;
+
+private:
+    // "Share HR" (the HR broadcast toggle) is not in the text database: the
+    // menu items' wildcard texts show it from this buffer.
+    static constexpr uint16_t skLabelSize = 16;
+    touchgfx::Unicode::UnicodeChar mHrBroadcastLabel[skLabelSize] {};
+
+    bool mConnected = false;
+    bool mHrBroadcast = false;
+    uint8_t mBondedCount = 0;
+    bool mNoticeShown = false;  // The info line shows a notice, not the count
+
+    void updateItems();
+    void showBondedCount();
 };
 
 #endif // SETTINGSPHONE2VIEW_HPP

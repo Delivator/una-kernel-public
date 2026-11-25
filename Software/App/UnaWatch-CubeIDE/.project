@@ -1049,6 +1049,11 @@
 			<locationURI>PARENT-2-PROJECT_LOC/Libs/Source/Components/Pmic.cpp</locationURI>
 		</link>
 		<link>
+			<name>Libs/Source/Components/HrBroadcast.cpp</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Libs/Source/Components/HrBroadcast.cpp</locationURI>
+		</link>
+		<link>
 			<name>Libs/Source/Components/Power.cpp</name>
 			<type>1</type>
 			<locationURI>PARENT-2-PROJECT_LOC/Libs/Source/Components/Power.cpp</locationURI>

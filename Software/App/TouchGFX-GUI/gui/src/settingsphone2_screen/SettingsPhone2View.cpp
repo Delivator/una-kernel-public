@@ -24,12 +24,22 @@ void SettingsPhone2View::setupScreen()
     pN = menu.getNotSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_PAIR);
     pN->config(T_TEXT_PAIR_ANOTHER);
 
+    // HR BROADCAST
+    touchgfx::Unicode::strncpy(mHrBroadcastLabel, "Share HR", skLabelSize - 1);
+    pS = menu.getSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_HR_BROADCAST);
+    pS->configToggle(mHrBroadcastLabel);
+    pS->setMsgTypedTextId(T_TMP_SEMIBOLD_25);
+    hrBroadcast(mHrBroadcast);
+
     menu.invalidate();
 }
 
 void SettingsPhone2View::bonded(uint8_t count)
 {
-    menu.setInfoMsg(count, count == 1 ? T_TEXT_DEVICE_PAIRED : T_TEXT_DEVICES_PAIRED);
+    mBondedCount = count;
+    if (!mNoticeShown) {
+        showBondedCount();
+    }
 
     TypedTextId unpair = count > 1 ? T_TEXT_UNPAIR_ALL : T_TEXT_UNPAIR;
 
@@ -43,6 +53,22 @@ void SettingsPhone2View::bonded(uint8_t count)
     menu.invalidate();
 }
 
+void SettingsPhone2View::showBondedCount()
+{
+    mNoticeShown = false;
+    menu.setInfoMsg(mBondedCount,
+            mBondedCount == 1 ? T_TEXT_DEVICE_PAIRED : T_TEXT_DEVICES_PAIRED);
+}
+
+void SettingsPhone2View::strapInUse()
+{
+    // Shown in place of the paired count until the next button press. Not in
+    // the text database, like the "Share HR" label.
+    mNoticeShown = true;
+    menu.setInfoMsg("Strap in use");
+    menu.invalidate();
+}
+
 void SettingsPhone2View::tearDownScreen()
 {
     SettingsPhone2ViewBase::tearDownScreen();
@@ -50,8 +76,33 @@ void SettingsPhone2View::tearDownScreen()
 
 void SettingsPhone2View::connected(bool connected)
 {
-    if (connected) {
-        menu.selectItem(Gui::Config::Menu::Top::Settings::Phone::ID_UNPAIR);
+    mConnected = connected;
+    updateItems();
+}
+
+void SettingsPhone2View::hrBroadcast(bool on)
+{
+    mHrBroadcast = on;
+
+    MenuItemSelected *pS = menu.getSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_HR_BROADCAST);
+    MenuItemNotSelected *pN = menu.getNotSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_HR_BROADCAST);
+
+    pS->setToggle(on);
+
+    pN->configTip(mHrBroadcastLabel, on ? T_TEXT_ON_UC : T_TEXT_OFF_UC);
+    pN->setTipColor(on ? Gui::Config::Color::MENU_NOT_SELECTED_TIP_ON : Gui::Config::Color::MENU_NOT_SELECTED_TIP_OFF);
+
+    updateItems();
+}
+
+void SettingsPhone2View::updateItems()
+{
+    // "Pair Another" is the last item: hide it while a phone is connected, and
+    // while broadcasting, which keeps phones away.
+    if (mConnected || mHrBroadcast) {
+        if (menu.getSelectedItem() >= Gui::Config::Menu::Top::Settings::Phone::ID_PAIR) {
+            menu.selectItem(Gui::Config::Menu::Top::Settings::Phone::ID_UNPAIR);
+        }
         menu.setNumberOfItems(Gui::Config::Menu::Top::Settings::Phone::ID_PAIR);
     } else {
         menu.setNumberOfItems(Gui::Config::Menu::Top::Settings::Phone::ID_COUNT);
@@ -61,6 +112,10 @@ void SettingsPhone2View::connected(bool connected)
 
 void SettingsPhone2View::handleKeyEvent(uint8_t key)
 {
+    if (mNoticeShown) {
+        showBondedCount();
+    }
+
     if (key == Gui::Config::Button::L1) {
         menu.selectPrev();
     }
@@ -80,6 +135,12 @@ void SettingsPhone2View::handleKeyEvent(uint8_t key)
             case Gui::Config::Menu::Top::Settings::Phone::ID_PAIR:
                 presenter->startPairing();
                 application().gotoPairingScreenNoTransition();
+                break;
+            case Gui::Config::Menu::Top::Settings::Phone::ID_HR_BROADCAST:
+                // Shown at once; the backend's answer corrects it if the
+                // broadcast could not start
+                hrBroadcast(!mHrBroadcast);
+                presenter->setHrBroadcast(mHrBroadcast);
                 break;
             default:
                 break;

@@ -267,7 +267,8 @@ namespace Phone
  */
 enum Id {
     ID_UNPAIR = 0,
-    ID_PAIR,
+    ID_HR_BROADCAST,
+    ID_PAIR,    // Last: hidden while connected or broadcasting
 
     ID_COUNT,   // Number of items in the phone settings menu
     ID_DEFAULT = ID_UNPAIR,

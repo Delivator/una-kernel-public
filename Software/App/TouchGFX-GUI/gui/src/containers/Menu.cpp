@@ -101,6 +101,14 @@ void Menu::setInfoMsg(uint16_t count, TypedTextId msgId)
     info.invalidate();
 }
 
+void Menu::setInfoMsg(const char *msg)
+{
+    Unicode::strncpy(infoBuffer, msg, INFO_SIZE - 1);
+    infoBuffer[INFO_SIZE - 1] = 0;
+    info.setVisible(true);
+    info.invalidate();
+}
+
 void Menu::setInfoMsgColor(touchgfx::colortype color)
 {
     info.setColor(color);

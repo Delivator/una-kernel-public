@@ -80,6 +80,12 @@ struct BleStartFCC {
 };
 struct BleStopFCC {};
 
+/// Turn the BLE heart-rate broadcast on or off. The backend answers with
+/// B2GEvent::HrBroadcast.
+struct HrBroadcastSet {
+    bool on;
+};
+
 struct PhoneNotificationPositiveAction {
     std::shared_ptr<PhoneNotification> notification;
 };
@@ -304,6 +310,7 @@ using Data = std::variant<
         BleUnpair,
         BleStartFCC,
         BleStopFCC,
+        HrBroadcastSet,
 
         PhoneNotificationPositiveAction,
         PhoneNotificationNegativeAction,
@@ -404,6 +411,12 @@ struct BlePair {
 };
 // A bonded device reconnected: the link was encrypted without a pin code
 struct BleReconnect {
+};
+// The BLE heart-rate broadcast state, after G2BEvent::HrBroadcastSet or when
+// the backend ends it by itself (e.g. to pair a phone)
+struct HrBroadcast {
+    bool on;
+    bool strapInUse = false;    // Refused to start: an app is using a strap
 };
 
 struct BatteryLevel {
@@ -638,6 +651,7 @@ using Data = std::variant<
         BlePinCode,
         BlePair,
         BleReconnect,
+        HrBroadcast,
 
         BatteryLevel,
         BatteryCharge,

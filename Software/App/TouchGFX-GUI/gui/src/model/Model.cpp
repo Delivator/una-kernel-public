@@ -702,6 +702,18 @@ void Model::bleStopFCC()
     mBackend.sendEventToBackend(G2BEvent::BleStopFCC{});
 }
 
+bool Model::hrBroadcastIsOn()
+{
+    return mBle.hrBroadcast;
+}
+
+void Model::hrBroadcastSet(bool on)
+{
+    // The backend confirms with B2GEvent::HrBroadcast, which may say "off" if
+    // the broadcast could not start
+    mBackend.sendEventToBackend(G2BEvent::HrBroadcastSet{ on });
+}
+
 
 // BLE Phone notification
 void Model::phoneNotificationPlay()
@@ -1339,6 +1351,16 @@ void Model::onDataEvent(const B2GEvent::BleReconnect &evt)
         mBle.reconnected = true;
         mBle.pinCode = 0;
         modelListener->onBleReconnect();
+    }
+}
+
+void Model::onDataEvent(const B2GEvent::HrBroadcast &evt)
+{
+    LOG_DEBUG("HrBroadcast [%s]\n", evt.on ? "on" : "off");
+    mBle.hrBroadcast = evt.on;
+    modelListener->onHrBroadcast(mBle.hrBroadcast);
+    if (evt.strapInUse) {
+        modelListener->onHrBroadcastStrapInUse();
     }
 }
 

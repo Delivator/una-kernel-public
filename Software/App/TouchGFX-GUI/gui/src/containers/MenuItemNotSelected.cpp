@@ -54,6 +54,17 @@ void MenuItemNotSelected::configTip(TypedTextId msgId, touchgfx::Unicode::Unicod
     mStyle = STYLE_TIP;
 }
 
+void MenuItemNotSelected::configTip(touchgfx::Unicode::UnicodeChar *msg, TypedTextId msgIdTip)
+{
+    reset();
+
+    if (msg != nullptr) {
+        Unicode::snprintf(textBuffer, TEXT_SIZE, "%s", msg);
+    }
+    mMsgIdTip = msgIdTip;
+    mStyle = STYLE_TIP;
+}
+
 void MenuItemNotSelected::configIcon(BitmapId iconId, TypedTextId msgId)
 {
     reset();

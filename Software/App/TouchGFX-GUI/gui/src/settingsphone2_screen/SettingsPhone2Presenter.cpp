@@ -14,6 +14,7 @@ void SettingsPhone2Presenter::activate()
 
     view.bonded(model->bleGetBondedCount());
     view.connected(model->bleIsConnected());
+    view.hrBroadcast(model->hrBroadcastIsOn());
 }
 
 void SettingsPhone2Presenter::deactivate()
@@ -34,6 +35,21 @@ void SettingsPhone2Presenter::onBleBond(bool paired)
 void SettingsPhone2Presenter::onBleConnect(bool connected)
 {
     view.connected(connected);
+}
+
+void SettingsPhone2Presenter::onHrBroadcast(bool on)
+{
+    view.hrBroadcast(on);
+}
+
+void SettingsPhone2Presenter::onHrBroadcastStrapInUse()
+{
+    view.strapInUse();
+}
+
+void SettingsPhone2Presenter::setHrBroadcast(bool on)
+{
+    model->hrBroadcastSet(on);
 }
 
 void SettingsPhone2Presenter::startPairing()
