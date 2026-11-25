@@ -124,6 +124,7 @@ public:
     virtual void onBlePair(bool paired) { }
     virtual void onBleReconnect() { }
     virtual void onHrBroadcast(bool on) { }
+    virtual void onHrBroadcastStrapInUse() { }
 
     virtual void onCommonSettings(const WatchSettings &sett) { }
     virtual void onLocalSettings(const WatchSettingsLocal &sett) { }

@@ -93,6 +93,9 @@ bool AccessoryManager::prepare(uint32_t kinds, uint32_t ownerPid)
 
     mOwnerPid = ownerPid;
     mActive = true;
+    if (mpAcquireListener) {
+        mpAcquireListener->onAccessoryAcquire();
+    }
     LOG_INFO("prepare: acquiring HRM (owner 0x%08lX, mode %u)\n",
             (unsigned long)ownerPid, static_cast<unsigned>(cfg.mode));
     central->requestAcquire();

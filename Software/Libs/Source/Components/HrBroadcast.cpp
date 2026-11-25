@@ -8,6 +8,7 @@
  */
 
 #include "HrBroadcast.hpp"
+#include "App/AccessoryManager.hpp"
 
 #include "SDK/SensorLayer/SensorDataBatch.hpp"
 #include "SDK/SensorLayer/DataParsers/SensorDataParserHeartRate.hpp"
@@ -21,6 +22,7 @@ HrBroadcast::HrBroadcast(Interface::IBle &ble, Ble::HeartRateService &service)
     , mService(service)
     , mHr(SDK::Sensor::Type::HEART_RATE, this, skPeriodMs)
 {
+    mMutex.init("HrBroadcast");
 }
 
 HrBroadcast::~HrBroadcast()
@@ -28,38 +30,51 @@ HrBroadcast::~HrBroadcast()
     stop();
 }
 
-bool HrBroadcast::start()
+HrBroadcast::Result HrBroadcast::start()
 {
+    OS::MutexCS cs(mMutex);
+
     if (mActive.load()) {
-        return true;
+        return Result::STARTED;
+    }
+
+    // AccessoryManager marks itself active before it asks for the broadcast
+    // to stop (Backend::onAccessoryAcquire), so under the mutex either this
+    // sees the strap or that stop() comes after and ends the broadcast.
+    if (App::AccessoryManager::getInstance().isActive()) {
+        LOG_INFO("Refused: a strap is in use\n");
+        return Result::STRAP_IN_USE;
     }
 
     if (!mBle.setSensorMode(true)) {
         LOG_ERROR("BLE sensor mode failed\n");
         mBle.setSensorMode(false);
-        return false;
+        return Result::FAILED;
     }
 
     if (!mHr.connect()) {
         LOG_ERROR("Heart rate sensor not available\n");
         mBle.setSensorMode(false);
-        return false;
+        return Result::FAILED;
     }
 
     mActive.store(true);
     LOG_INFO("Started\n");
-    return true;
+    return Result::STARTED;
 }
 
-void HrBroadcast::stop()
+bool HrBroadcast::stop()
 {
+    OS::MutexCS cs(mMutex);
+
     if (!mActive.exchange(false)) {
-        return;
+        return false;
     }
 
     mHr.disconnect();
     mBle.setSensorMode(false);
     LOG_INFO("Stopped\n");
+    return true;
 }
 
 void HrBroadcast::onSdlNewData(uint16_t handle, const SDK::Sensor::Data *data,
@@ -74,7 +89,11 @@ void HrBroadcast::onSdlNewData(uint16_t handle, const SDK::Sensor::Data *data,
     SDK::SensorDataParser::HeartRate hr(batch[count - 1]);
 
     float bpm = hr.getBpm();
-    if (!(bpm > 0.0f)) {
+    if (hr.getTrustLevel() < skMinTrustLevel) {
+        // Not a reading yet (settling, or loose on the wrist): a strap sends
+        // no contact then, rather than a guess
+        bpm = 0.0f;
+    } else if (!(bpm > 0.0f)) {
         bpm = 0.0f;         // Also catches NaN
     } else if (bpm > 255.0f) {
         bpm = 255.0f;

@@ -1359,6 +1359,9 @@ void Model::onDataEvent(const B2GEvent::HrBroadcast &evt)
     LOG_DEBUG("HrBroadcast [%s]\n", evt.on ? "on" : "off");
     mBle.hrBroadcast = evt.on;
     modelListener->onHrBroadcast(mBle.hrBroadcast);
+    if (evt.strapInUse) {
+        modelListener->onHrBroadcastStrapInUse();
+    }
 }
 
 void Model::onDataEvent(const B2GEvent::BatteryLevel &evt)

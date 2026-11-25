@@ -21,6 +21,7 @@
 #ifndef __COMPONENT_APP_ACCESSORY_MANAGER_HPP
 #define __COMPONENT_APP_ACCESSORY_MANAGER_HPP
 
+#include <atomic>
 #include <cstdint>
 
 #include "Accessory/AccessoryCentral.hpp"
@@ -30,6 +31,21 @@ namespace App
 
 class AccessoryManager : public Ble::AccessoryCentral::SampleCallback {
 public:
+
+    /**
+     * @brief   Told when acquisition is about to start, after isActive() has
+     *          turned true: whatever would restart the BLE chip (Share HR)
+     *          ends first, as a restart would cut the strap's link unseen.
+     *          Called on the requesting app's thread; may block.
+     */
+    class AcquireListener {
+    public:
+        virtual void onAccessoryAcquire() = 0;
+    protected:
+        ~AcquireListener() = default;
+    };
+
+    void setAcquireListener(AcquireListener *listener) { mpAcquireListener = listener; }
 
     static AccessoryManager& getInstance()
     {
@@ -94,7 +110,8 @@ private:
     // settings-driven disable).
     void releaseActive();
 
-    bool     mActive { false };
+    std::atomic<bool> mActive { false };   // Read from other threads
+    AcquireListener *mpAcquireListener { nullptr };
     bool     mCallbackAttached { false };
     uint32_t mOwnerPid { 0 };
 };

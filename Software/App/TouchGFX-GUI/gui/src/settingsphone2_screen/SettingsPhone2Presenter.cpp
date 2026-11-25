@@ -42,6 +42,11 @@ void SettingsPhone2Presenter::onHrBroadcast(bool on)
     view.hrBroadcast(on);
 }
 
+void SettingsPhone2Presenter::onHrBroadcastStrapInUse()
+{
+    view.strapInUse();
+}
+
 void SettingsPhone2Presenter::setHrBroadcast(bool on)
 {
     model->hrBroadcastSet(on);

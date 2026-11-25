@@ -416,6 +416,7 @@ struct BleReconnect {
 // the backend ends it by itself (e.g. to pair a phone)
 struct HrBroadcast {
     bool on;
+    bool strapInUse = false;    // Refused to start: an app is using a strap
 };
 
 struct BatteryLevel {

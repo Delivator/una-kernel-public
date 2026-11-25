@@ -246,12 +246,13 @@ void Backend::thread()
             pBleMediaService->attachCallback(this);
         }
 
-        // Last, so its attributes come after every other service's and the
-        // handles a bonded phone has cached stay where they were.
+        // A sensor-mode service: it is only in the GATT database while Share
+        // HR is on, so the phone's database is the official firmware's.
         pBleHeartRateService = new (std::nothrow) Ble::HeartRateService(ble);
         if (pBleHeartRateService) {
             pHrBroadcast = new (std::nothrow) HrBroadcast(ble, *pBleHeartRateService);
         }
+        App::AccessoryManager::getInstance().setAcquireListener(this);
 
         if (settingsDebug.bleCfg.useNUS && settingsDebug.logCfg.logToBLE &&
                 pBleNordicUartService)
@@ -500,7 +501,11 @@ void Backend::bleMonitorTimCallback(void *arg)
             // Fall through to enable() on next timer tick
             return;
         }
-        if (ble.isBonded() || ble.isSensorMode()) {
+        // isAlive() can wait out a mode switch that began after the check
+        // above, and the switch advertises by itself.
+        if ((ble.isBonded() || ble.isSensorMode()) && !ble.isSwitchingMode() &&
+                !ble.isAdvertise() && !ble.isConnected())
+        {
             LOG_WARNING("Restart BLE advertising\n");
             ble.startAdvertising();
         }
@@ -514,7 +519,11 @@ void Backend::bleMonitorTimCallback(void *arg)
         // Update bond state in GUI
         sendEventToGui(B2GEvent::BleBond {ble.getBondedCount()});
 
-        if (isBonded || ble.isSensorMode()) {
+        // enable() waits out a mode switch that began after the check above,
+        // and the switch advertises by itself.
+        if ((isBonded || ble.isSensorMode()) && !ble.isAdvertise() &&
+                !ble.isConnected())
+        {
             ble.startAdvertising();
         }
     }
@@ -709,8 +718,7 @@ void Backend::guiHandler(const G2BEvent::BleStartPairing &evt)
     LOG_DEBUG("BleStartPairing\n");
 
     // Pairing needs the normal phone link: end the heart-rate broadcast.
-    if (pHrBroadcast && pHrBroadcast->isActive()) {
-        pHrBroadcast->stop();
+    if (pHrBroadcast && pHrBroadcast->stop()) {
         sendEventToGui(B2GEvent::HrBroadcast{ false });
     }
 
@@ -737,6 +745,13 @@ void Backend::guiHandler(const G2BEvent::BleAbortPairing &evt)
 void Backend::guiHandler(const G2BEvent::BleUnpair &evt)
 {
     LOG_DEBUG("BleUnpair\n");
+
+    // Unpairing is about the phone link, and would otherwise drop the
+    // heart-rate client: end the broadcast first.
+    if (pHrBroadcast && pHrBroadcast->stop()) {
+        sendEventToGui(B2GEvent::HrBroadcast{ false });
+    }
+
     Interface::IBle& ble = ComponentFactory::GetInstance().getBle();
     ble.unpair();
     // Update bonding status
@@ -771,15 +786,28 @@ void Backend::guiHandler(const G2BEvent::HrBroadcastSet &evt)
     LOG_INFO("HrBroadcastSet %d\n", evt.on);
 
     bool on = false;
+    bool strapInUse = false;
     if (pHrBroadcast) {
         if (evt.on) {
-            on = pHrBroadcast->start();
+            HrBroadcast::Result result = pHrBroadcast->start();
+            on = result == HrBroadcast::Result::STARTED;
+            strapInUse = result == HrBroadcast::Result::STRAP_IN_USE;
         } else {
             pHrBroadcast->stop();
         }
     }
 
-    sendEventToGui(B2GEvent::HrBroadcast{ on });
+    sendEventToGui(B2GEvent::HrBroadcast{ on, strapInUse });
+}
+
+void Backend::onAccessoryAcquire()
+{
+    // On the requesting app's thread: ending the broadcast restarts the BLE
+    // chip, so it must be done before the strap is searched for.
+    if (pHrBroadcast && pHrBroadcast->stop()) {
+        LOG_INFO("Share HR ended: an app is using a strap\n");
+        sendEventToGui(B2GEvent::HrBroadcast{ false });
+    }
 }
 
 void Backend::guiHandler(const G2BEvent::PhoneNotificationPositiveAction &evt)

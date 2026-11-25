@@ -36,7 +36,10 @@ void SettingsPhone2View::setupScreen()
 
 void SettingsPhone2View::bonded(uint8_t count)
 {
-    menu.setInfoMsg(count, count == 1 ? T_TEXT_DEVICE_PAIRED : T_TEXT_DEVICES_PAIRED);
+    mBondedCount = count;
+    if (!mNoticeShown) {
+        showBondedCount();
+    }
 
     TypedTextId unpair = count > 1 ? T_TEXT_UNPAIR_ALL : T_TEXT_UNPAIR;
 
@@ -47,6 +50,22 @@ void SettingsPhone2View::bonded(uint8_t count)
     MenuItemNotSelected *pN = menu.getNotSelectedItem(Gui::Config::Menu::Top::Settings::Phone::ID_UNPAIR);
     pN->config(unpair);
 
+    menu.invalidate();
+}
+
+void SettingsPhone2View::showBondedCount()
+{
+    mNoticeShown = false;
+    menu.setInfoMsg(mBondedCount,
+            mBondedCount == 1 ? T_TEXT_DEVICE_PAIRED : T_TEXT_DEVICES_PAIRED);
+}
+
+void SettingsPhone2View::strapInUse()
+{
+    // Shown in place of the paired count until the next button press. Not in
+    // the text database, like the "Share HR" label.
+    mNoticeShown = true;
+    menu.setInfoMsg("Strap in use");
     menu.invalidate();
 }
 
@@ -93,6 +112,10 @@ void SettingsPhone2View::updateItems()
 
 void SettingsPhone2View::handleKeyEvent(uint8_t key)
 {
+    if (mNoticeShown) {
+        showBondedCount();
+    }
+
     if (key == Gui::Config::Button::L1) {
         menu.selectPrev();
     }

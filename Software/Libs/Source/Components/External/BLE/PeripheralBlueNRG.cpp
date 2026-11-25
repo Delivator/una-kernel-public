@@ -606,7 +606,8 @@ bool PeripheralBlueNRG::setCharacteristicValue(Ble::CharacteristicHandle handle,
     for (;;) {
         mCore.lock();
         hchr = findCharacteristic(handle);
-        if (!hchr) {
+        if (!hchr || hchr->handle == 0) {
+            // Gone, or left out of the database by a mode switch meanwhile
             mCore.release();
             break;
         }

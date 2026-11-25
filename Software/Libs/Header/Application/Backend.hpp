@@ -22,6 +22,7 @@
 #include "IBle.hpp"
 #include "BLE/Services/DeviceInformationService.hpp"
 #include "BLE/Accessory/AccessoryCentral.hpp"
+#include "App/AccessoryManager.hpp"
 #include "BLE/Services/CurrentTimeService.hpp"
 #include "BLE/Services/BatteryService.hpp"
 #include "BLE/Services/FileTransferService.hpp"
@@ -84,6 +85,7 @@ struct Backend : public IGuiBackend,
                  public ErrorMonitor::Callback,
                  public Ble::AccessoryCentral::ScanCallback,
                  public Ble::AccessoryCentral::StatusCallback,
+                 public App::AccessoryManager::AcquireListener,
                  public Instance::MagCalRunner::Owner,
                  public Compass::Listener,
                  public SDK::Interface::ISensorDataListener
@@ -459,6 +461,10 @@ private:
     // the SDK::Accessory::State contract and pushes it to the GUI.
     void onAccessoryStatus(Ble::AccessoryCentral::LinkStatus status,
             const char *name) override;
+
+    // App::AccessoryManager::AcquireListener - Share HR ends before a strap
+    // is searched for.
+    void onAccessoryAcquire() override;
 
     // Push the accessory feature flag + remembered list to the GUI.
     void sendAccessoryConfig();
