@@ -1162,37 +1162,13 @@ bool PeripheralBlueNRG::startSensorAdv()
     // The own address must be one that no bond leads to: a bonded phone
     // resolves the watch's resolvable private address with its IRK, so its OS
     // reconnects by itself and every app on it reaches the watch as the bonded
-    // device. Pairing hands out only the static random identity address, so
-    // the chip's public address, if one is programmed, is unknown to every
-    // bond and fixed, which lets a bike computer find the same sensor every
-    // time. Without one, a non-resolvable private address: unknown as well,
-    // but new with every advertising start.
-    static constexpr uint8_t kOwnAddrPublic = 0x00;
+    // device. A non-resolvable private address is unknown to every bond. It is
+    // new with every advertising start, so a client that saves sensors by
+    // address finds the watch as a new sensor each time. The vendor library
+    // cannot set a fixed random address (no write-config or set-random-address
+    // command), and the chip's public address is ST's unset default, the same
+    // on every watch.
     static constexpr uint8_t kOwnAddrNonResolvable = 0x03;
-    static constexpr uint8_t kConfigPublicAddress = 0x00;
-
-    uint8_t ownAddrType = kOwnAddrNonResolvable;
-    uint8_t pubAddr[6] {};
-    uint8_t pubAddrLen = 0;
-    if (una_ble_hal_read_config_data(kConfigPublicAddress, &pubAddrLen, pubAddr)
-            == UNA_BLE_STATUS_SUCCESS && pubAddrLen == sizeof(pubAddr))
-    {
-        bool allZero = true;
-        bool allOnes = true;
-        for (uint8_t b : pubAddr) {
-            allZero = allZero && b == 0x00;
-            allOnes = allOnes && b == 0xFF;
-        }
-        if (!allZero && !allOnes) {
-            ownAddrType = kOwnAddrPublic;
-        }
-    }
-    if (ownAddrType == kOwnAddrPublic) {
-        LOG_INFO("Sensor mode: public address %02X:%02X:%02X:%02X:%02X:%02X\n",
-                pubAddr[5], pubAddr[4], pubAddr[3], pubAddr[2], pubAddr[1], pubAddr[0]);
-    } else {
-        LOG_INFO("Sensor mode: no public address, a non-resolvable one\n");
-    }
 
     // Complete list of the 16-bit UUIDs of the services that hold an open
     // characteristic: a sensor-mode client finds the watch by them (e.g. Heart
@@ -1240,12 +1216,7 @@ bool PeripheralBlueNRG::startSensorAdv()
         return false;
     }
 
-    status = setSensorDiscoverable(ownAddrType, uuidListLen, uuidList);
-    if (status != UNA_BLE_STATUS_SUCCESS && ownAddrType != kOwnAddrNonResolvable) {
-        LOG_WARNING("Advertising from the public address failed [0x%02X], "
-                "a non-resolvable one instead\n", status);
-        status = setSensorDiscoverable(kOwnAddrNonResolvable, uuidListLen, uuidList);
-    }
+    status = setSensorDiscoverable(kOwnAddrNonResolvable, uuidListLen, uuidList);
 
     if (status != UNA_BLE_STATUS_SUCCESS) {
         LOG_ERROR("una_ble_gap_set_discoverable() failed [0x%02X]\n", status);
