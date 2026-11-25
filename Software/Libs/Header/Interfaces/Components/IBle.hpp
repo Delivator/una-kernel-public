@@ -628,6 +628,52 @@ public:
      */
     virtual bool isTransferQuiet(uint32_t quietMs) const = 0;
 
+    // Sensor mode. Optional
+    /**
+     * @brief   Let a remote device read and subscribe to a characteristic over
+     *          an unencrypted link. A service that holds an open characteristic
+     *          is a sensor service: it is in the GATT database only in sensor
+     *          mode, and the other services only outside it.
+     * @note    Call before enable(): the permissions are fixed when the GATT
+     *          database is built.
+     * @param   handle: Handle of the characteristic.
+     * @retval  'true' - the characteristic is open, 'false' - not supported.
+     */
+    virtual bool setCharacteristicOpen(Ble::CharacteristicHandle /*handle*/) { return false; }
+
+    /**
+     * @brief   Turn sensor mode on or off.
+     *
+     * In sensor mode the watch acts like a stand-alone BLE sensor: its GATT
+     * database holds only the sensor services (see setCharacteristicOpen()),
+     * it advertises them to anyone from an address that no bond leads to, so
+     * even the paired phone sees an unknown sensor, and accepts a connection
+     * without pairing. Pairing is refused.
+     * Outside sensor mode the database is the phone's alone, as if no sensor
+     * service existed.
+     *
+     * Changing the mode of an enabled BLE restarts the BLE chip with the other
+     * database, which drops the current connection; bonds are kept. If sensor
+     * mode cannot start, BLE goes back to the normal mode.
+     *
+     * @param   on: 'true' - sensor mode, 'false' - the normal phone link.
+     * @retval  'true' - the mode is set, 'false' - not supported or failed
+     *          (and the mode is off).
+     */
+    virtual bool setSensorMode(bool /*on*/) { return false; }
+
+    /**
+     * @brief   Check if sensor mode is on.
+     * @retval  'true' - sensor mode is on, 'false' - otherwise.
+     */
+    virtual bool isSensorMode() const { return false; }
+
+    /**
+     * @brief   Check if a setSensorMode() call is restarting BLE right now.
+     *          BLE looks disabled meanwhile; it is not to be restarted.
+     */
+    virtual bool isSwitchingMode() const { return false; }
+
     // iOS phone-link GATT clients (ANCS notifications, AMS media) live in the
     // Ble::ClientANCS / Ble::ClientAMS components and are consumed directly, so
     // they are intentionally not part of this interface.

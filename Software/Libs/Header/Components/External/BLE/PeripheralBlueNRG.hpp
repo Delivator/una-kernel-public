@@ -260,6 +260,26 @@ public:
      */
     virtual bool isConnected() override;
 
+    /**
+     * @copydoc Interface::IBle::setCharacteristicOpen()
+     */
+    virtual bool setCharacteristicOpen(CharacteristicHandle handle) override;
+
+    /**
+     * @copydoc Interface::IBle::setSensorMode()
+     */
+    virtual bool setSensorMode(bool on) override;
+
+    /**
+     * @copydoc Interface::IBle::isSensorMode()
+     */
+    virtual bool isSensorMode() const override { return mSensorMode; }
+
+    /**
+     * @copydoc Interface::IBle::isSwitchingMode()
+     */
+    virtual bool isSwitchingMode() const override { return mSwitchingMode; }
+
 
     /**
      * @brief   Start FCC TX test (LE transmitter test).
@@ -360,6 +380,11 @@ private:
 
     State mState { };
 
+    // Sensor mode (see Interface::IBle::setSensorMode()). Read on the BLE
+    // event thread, written under mCore.
+    volatile bool mSensorMode { false };
+    volatile bool mSwitchingMode { false };
+
     static const uint32_t skNameLenMax = 20;
     char mName[skNameLenMax];
 
@@ -420,6 +445,7 @@ private:
         ServiceHolder *service;
         uint16_t handle;
         Interface::IBle::CharacteristicCallback *callback;
+        bool open;      // Reachable without encryption (sensor mode)
 
         void clear()
         {
@@ -429,6 +455,7 @@ private:
             service = nullptr;
             handle = 0;
             callback = nullptr;
+            open = false;
         }
     };
     CharacteristicHolder mCharacteristicHolder[skCharacteristicsMax] {};
@@ -444,6 +471,26 @@ private:
 
     bool initServices();
     bool startAdv(bool pair = false);
+    bool startSensorAdv();
+
+    /**
+     * @brief   Advertise the sensor services from the given own address type.
+     */
+    una_ble_status setSensorDiscoverable(uint8_t ownAddrType,
+            uint8_t uuidListLen, uint8_t *uuidList);
+
+    /**
+     * @brief   Restart the BLE chip so the GATT database follows mSensorMode,
+     *          then advertise. Call with the core mutex held.
+     * @retval  'true' - enabled in the current mode, 'false' - failed.
+     */
+    bool restartForMode();
+
+    /**
+     * @brief   Check if a service belongs to sensor mode: it holds at least
+     *          one open characteristic.
+     */
+    bool isSensorService(const ServiceHolder &srv) const;
     bool stopAdv();
     bool terminate();
     bool updateWhitelist();

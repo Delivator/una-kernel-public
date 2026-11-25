@@ -472,6 +472,12 @@ void Backend::bleMonitorTimCallback(void *arg)
 {
     Interface::IBle &ble = ComponentFactory::GetInstance().getBle();
 
+    // A sensor-mode switch restarts the chip on another thread: BLE only looks
+    // disabled meanwhile, and restarting it here would race the switch.
+    if (ble.isSwitchingMode()) {
+        return;
+    }
+
     if (ble.isConnected()) {
         return;
     }
@@ -487,7 +493,11 @@ void Backend::bleMonitorTimCallback(void *arg)
             // Fall through to enable() on next timer tick
             return;
         }
-        if (ble.isBonded()) {
+        // isAlive() can wait out a mode switch that began after the check
+        // above, and the switch advertises by itself.
+        if ((ble.isBonded() || ble.isSensorMode()) && !ble.isSwitchingMode() &&
+                !ble.isAdvertise() && !ble.isConnected())
+        {
             LOG_WARNING("Restart BLE advertising\n");
             ble.startAdvertising();
         }
@@ -501,7 +511,11 @@ void Backend::bleMonitorTimCallback(void *arg)
         // Update bond state in GUI
         sendEventToGui(B2GEvent::BleBond {ble.getBondedCount()});
 
-        if (isBonded) {
+        // enable() waits out a mode switch that began after the check above,
+        // and the switch advertises by itself.
+        if ((isBonded || ble.isSensorMode()) && !ble.isAdvertise() &&
+                !ble.isConnected())
+        {
             ble.startAdvertising();
         }
     }
@@ -2308,6 +2322,12 @@ void Backend::onConnect(const Ble::Address &addr)
 #endif
 
     mBlePinRequested = false;
+
+    // In sensor mode the link is a heart-rate client, not the phone: the
+    // GUI's connection state is the phone's.
+    if (ComponentFactory::GetInstance().getBle().isSensorMode()) {
+        return;
+    }
     sendEventToGui(B2GEvent::BleConnect{true});
 }
 
