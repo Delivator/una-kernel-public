@@ -5689,6 +5689,11 @@
 			<locationURI>PARENT-2-PROJECT_LOC/Libs/Source/Components/External/BLE/Services/BatteryService.cpp</locationURI>
 		</link>
 		<link>
+			<name>Libs/Source/Components/External/BLE/Services/HeartRateService.cpp</name>
+			<type>1</type>
+			<locationURI>PARENT-2-PROJECT_LOC/Libs/Source/Components/External/BLE/Services/HeartRateService.cpp</locationURI>
+		</link>
+		<link>
 			<name>Libs/Source/Components/External/BLE/Services/CANS</name>
 			<type>2</type>
 			<locationURI>virtual:/virtual</locationURI>
